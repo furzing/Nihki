@@ -1,0 +1,173 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(222, 13%, 11%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(222, 13%, 11%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(222, 13%, 11%);
+  --primary: hsl(0, 0%, 0%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(0, 0%, 47%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(0, 0%, 97%);
+  --muted-foreground: hsl(0, 0%, 47%);
+  --accent: hsl(0, 0%, 96%);
+  --accent-foreground: hsl(0, 0%, 11%);
+  --destructive: hsl(0, 0%, 30%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(0, 0%, 91%);
+  --input: hsl(0, 0%, 96%);
+  --ring: hsl(0, 0%, 34%);
+  --chart-1: hsl(0, 0%, 20%);
+  --chart-2: hsl(0, 0%, 30%);
+  --chart-3: hsl(0, 0%, 40%);
+  --chart-4: hsl(0, 0%, 50%);
+  --chart-5: hsl(0, 0%, 60%);
+  --sidebar: hsl(0, 0%, 100%);
+  --sidebar-foreground: hsl(222, 13%, 11%);
+  --sidebar-primary: hsl(0, 0%, 0%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(0, 0%, 96%);
+  --sidebar-accent-foreground: hsl(0, 0%, 11%);
+  --sidebar-border: hsl(0, 0%, 91%);
+  --sidebar-ring: hsl(0, 0%, 34%);
+  --font-sans: 'Poppins', sans-serif;
+  --font-serif: 'Poppins', sans-serif;
+  --font-mono: 'Menlo', monospace;
+  --radius: 0.5rem;
+  --shadow: 0px 2px 0px 0px hsl(0, 0%, 0% / 0.02), 0px 1px 2px -1px hsl(0, 0%, 0% / 0.06);
+  --shadow-sm: 0px 1px 2px 0px hsl(0, 0%, 0% / 0.05);
+  --shadow-md: 0px 4px 6px -1px hsl(0, 0%, 0% / 0.1), 0px 2px 4px -1px hsl(0, 0%, 0% / 0.06);
+  --shadow-lg: 0px 10px 15px -3px hsl(0, 0%, 0% / 0.1), 0px 4px 6px -2px hsl(0, 0%, 0% / 0.05);
+  --shadow-xl: 0px 20px 25px -5px hsl(0, 0%, 0% / 0.1), 0px 10px 10px -5px hsl(0, 0%, 0% / 0.04);
+  --shadow-2xl: 0px 25px 50px -12px hsl(0, 0%, 0% / 0.25);
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: hsl(0, 0%, 5%);
+  --foreground: hsl(0, 0%, 98%);
+  --card: hsl(0, 0%, 5%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --popover: hsl(0, 0%, 5%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --primary: hsl(0, 0%, 100%);
+  --primary-foreground: hsl(0, 0%, 5%);
+  --secondary: hsl(0, 0%, 27%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --muted: hsl(0, 0%, 15%);
+  --muted-foreground: hsl(0, 0%, 65%);
+  --accent: hsl(0, 0%, 15%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 0%, 30%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --border: hsl(0, 0%, 15%);
+  --input: hsl(0, 0%, 15%);
+  --ring: hsl(0, 0%, 4%);
+  --chart-1: hsl(0, 0%, 80%);
+  --chart-2: hsl(0, 0%, 70%);
+  --chart-3: hsl(0, 0%, 60%);
+  --chart-4: hsl(0, 0%, 50%);
+  --chart-5: hsl(0, 0%, 40%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.float-animation {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Audio visualizer bars */
+.audio-bar {
+  width: 3px;
+  border-radius: 2px;
+  background: hsl(var(--primary));
+  animation: audioWave 1.5s ease-in-out infinite;
+}
+
+.audio-bar:nth-child(2) { animation-delay: 0.1s; }
+.audio-bar:nth-child(3) { animation-delay: 0.2s; }
+.audio-bar:nth-child(4) { animation-delay: 0.3s; }
+
+@keyframes audioWave {
+  0%, 100% { height: 8px; }
+  50% { height: 24px; }
+}
+
+/* QR Code styling */
+.qr-code {
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+}
+
+/* Pulse animation for live indicators */
+.pulse-green {
+  animation: pulseGreen 2s ease-in-out infinite;
+}
+
+@keyframes pulseGreen {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--ring));
+}
