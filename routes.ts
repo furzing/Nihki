@@ -46,17 +46,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const user = await storage.createUser(validatedData);
 
-      // Set session and explicitly save before responding
+      // Set session
       req.session.userId = user.id;
-      req.session.save((err) => {
-        if (err) {
-          console.error("[Session Save Error]", err);
-          return res.status(500).json({ message: "Failed to create session" });
-        }
-        // Don't send password back
-        const { password, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
-      });
+
+      // Don't send password back
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
     } catch (error) {
       res.status(400).json({
         message: error instanceof Error ? error.message : "Invalid signup data"
@@ -73,17 +68,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Set session and explicitly save before responding
+      // Set session
       req.session.userId = user.id;
-      req.session.save((err) => {
-        if (err) {
-          console.error("[Session Save Error]", err);
-          return res.status(500).json({ message: "Failed to create session" });
-        }
-        // Don't send password back
-        const { password, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
-      });
+
+      // Don't send password back
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
     } catch (error) {
       console.error("[Login Error]", error);
       res.status(400).json({

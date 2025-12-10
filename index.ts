@@ -1,43 +1,22 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
-import pg from "pg";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-
-// Trust proxy for secure cookies behind Render's proxy
-if (process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1);
-}
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-
-// PostgreSQL session store
-const PgSession = connectPgSimple(session);
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
 
 // Session configuration
 app.use(
   session({
-    store: new PgSession({
-      pool,
-      tableName: 'session',
-      createTableIfMissing: true
-    }),
     secret: process.env.SESSION_SECRET || "nihki-secret-key-change-in-production",
     resave: false,
     saveUninitialized: false,
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      sameSite: "lax",
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     },
   })

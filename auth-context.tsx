@@ -46,9 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await apiRequest("POST", "/api/auth/login", { email, password });
       return response.json();
     },
-    onSuccess: (userData: User) => {
-      // Set data directly without invalidating - cookie is already set
+    onSuccess: async (userData: User) => {
       queryClient.setQueryData(["/api/auth/me"], userData);
+      // Invalidate to ensure fresh data from server
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
 
@@ -57,9 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await apiRequest("POST", "/api/auth/signup", data);
       return response.json();
     },
-    onSuccess: (userData: User) => {
-      // Set data directly without invalidating - cookie is already set
+    onSuccess: async (userData: User) => {
       queryClient.setQueryData(["/api/auth/me"], userData);
+      // Invalidate to ensure fresh data from server
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
 
@@ -76,11 +78,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = async (email: string, password: string): Promise<User> => {
-    return await loginMutation.mutateAsync({ email, password });
+    const result = await loginMutation.mutateAsync({ email, password });
+    // Wait for query invalidation to complete
+    await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    return result;
   };
 
   const signup = async (name: string, email: string, password: string, preferredLanguage: string): Promise<User> => {
-    return await signupMutation.mutateAsync({ name, email, password, preferredLanguage });
+    const result = await signupMutation.mutateAsync({ name, email, password, preferredLanguage });
+    // Wait for query invalidation to complete
+    await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    return result;
   };
 
   const logout = async (): Promise<void> => {
