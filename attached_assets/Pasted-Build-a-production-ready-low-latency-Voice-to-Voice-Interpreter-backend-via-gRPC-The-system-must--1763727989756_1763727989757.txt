@@ -1,0 +1,39 @@
+Build a production-ready, low-latency Voice-to-Voice Interpreter backend  via gRPC. The system must handle real-time bidirectional streaming with robust error handling and silence suppression.## Tech Stack*  i recommend: *Server:* Fiber (github.com/gofiber/fiber/v2) + Fiber WebSockets.* *Google SDKs:*    * cloud.google.com/go/speech/apiv1 (STT)    * cloud.google.com/go/translate/apiv3 (Translation)    * cloud.google.com/go/texttospeech/apiv1 (TTS)* *Protocol:* gRPC for all Google Cloud connections.## Architectural Pipeline (Concurrent)
+
+The backend must manage a pipeline for every WebSocket connection:Client Audio -> [VAD Filter] -> STT Stream -> Translation -> TTS Stream -> Client Speaker## Detailed Implementation Requirements### 1. Robust WebSocket Handler (/ws/interpret)* *Binary Protocol:* Accept binary messages as raw Linear16 PCM audio (16kHz, 1 channel).* *Control Messages:* Accept JSON text messages for config (e.g., {"target_lang": "es", "source_lang": "en"}).* *Concurrency Safety:* Use a sync.WaitGroup or errgroup to manage the read/write pumps. If the WebSocket closes, ensure all Google gRPC streams are explicitly closed (CloseSend) to prevent goroutine leaks.### 2. The "Don't Stream Silence" Logic* *Client-Side Requirement:* In the generated client.js, implement a ScriptProcessor or AudioWorklet that calculates the RMS (Root Mean Square) of the microphone input.    * Threshold: If audio volume is below -45dB, *do not send the packet* to the WebSocket.* *Server-Side Guardrail:* In the handler, verify the length of the incoming byte slice. If it is empty or extremely small, discard it immediately before sending to Google STT.### 3. Google STT (Streaming)* *Config:* Encoding: Linear16, SampleRate: 16000, LanguageCode: [source].* *Latency Settings:* Set InterimResults = true and SingleUtterance = false.* *Handling Logic:*    ### 4. Translation & TTS (Optimization)* *Translation:* Use the TranslateText method. Edge Case: If the input text is empty or just punctuation, abort the step.* *TTS:* Use StreamingSynthesize.    * Format: AudioEncoding: OGG_OPUS. This is critical for performance. Do not use MP3.    * Voice: Use a "Neural2" voice for the target language if available.* *Stream Response:* As soon as chunks of Opus audio arrive from Google, write them immediately to the WebSocket as binary. Do not wait for the whole audio file to download.### 5. Client-Side Code 
+
+ *Audio Context:* Must convert microphone input to *16kHz Mono PCM (Int16)* before sending. Browsers record at 44.1kHz/48kHz by default—you must downsample in the JS client, or the Google STT will output garbage.* *Audio Queue:* Implement a simple audio buffer queue to play the incoming Ogg/Opus chunks smoothly without overlapping.
+
+.## Handling Edge Cases1.  *Token Expiry:* Ensure the Google Client is initialized in a way that it refreshes credentials automatically (default behavior of Google SDK, just ensure context is passed).2.  *Panic Recovery:* Wrap the WebSocket handler in a recover function to prevent the whole server from crashing if one pipe fails.3.  
+
+Streaming STT stream has a hard limit of 5 minutes per stream. Google Cloud Documentation+2Google Cloud Documentation+2
+
+Strategy:
+
+
+
+For each speaking user keep a timer
+
+At around 4 minutes, quietly create a new STT stream
+
+Start writing future audio to the new one
+
+Close the old stream once its outstanding results are processed
+
+This gives “endless streaming” without user noticing
+
+Make sure each audio message size is under the per message limit, and total rate approximates real time.
+
+want it to fail gracefully, not suddenly die during a keynote.
+
+At minimum if makes sense:
+
+
+
+Wrap all calls to Google APIs with:
+
+retries with exponential backoff on transient errors
+
+clear classification of permanent vs transient errors
+
+remember, we are building for production, this is a product.
