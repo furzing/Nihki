@@ -1,7 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import pkg from "pg";
-const { Pool } = pkg;
+import { pool } from "./db";
 import bcrypt from "bcrypt";
 import {
   type User,
@@ -21,10 +20,6 @@ import {
   translations
 } from "@shared/schema";
 import type { IStorage } from "./storage";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 const db = drizzle(pool);
 

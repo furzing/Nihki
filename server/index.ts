@@ -1,10 +1,13 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import pgSession from "connect-pg-simple";
+import { pool } from "./db";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+const PgSession = pgSession(session);
 
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
@@ -12,9 +15,14 @@ if (process.env.NODE_ENV === "production") {
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session configuration
+// Session configuration with PostgreSQL store
 app.use(
   session({
+    store: new PgSession({
+      pool,
+      tableName: 'session',
+      createTableIfMissing: false
+    }),
     secret: process.env.SESSION_SECRET || "nihki-secret-key-change-in-production",
     resave: false,
     saveUninitialized: false,
