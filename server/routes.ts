@@ -72,12 +72,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
+      console.log(`[Auth] Login success for ${user.email}, session ID before: ${req.sessionID}`);
       req.session.userId = user.id;
       
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            console.error(`[Auth] Session save error:`, err);
+            reject(err);
+          } else {
+            console.log(`[Auth] Session saved successfully, session ID: ${req.sessionID}, userId: ${req.session.userId}`);
+            resolve();
+          }
         });
       });
 
@@ -102,6 +108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/auth/me", async (req, res) => {
+    console.log(`[Auth] /me called, session ID: ${req.sessionID}, userId in session: ${req.session.userId}`);
     const userId = req.session.userId;
     if (!userId) {
       return res.status(401).json({ message: "Not authenticated" });

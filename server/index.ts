@@ -5,6 +5,10 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -14,11 +18,13 @@ app.use(
     secret: process.env.SESSION_SECRET || "nihki-secret-key-change-in-production",
     resave: false,
     saveUninitialized: false,
+    proxy: process.env.NODE_ENV === "production",
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       sameSite: process.env.NODE_ENV === "production" ? 'lax' : 'strict',
+      path: '/',
     },
   })
 );
