@@ -17,10 +17,9 @@ export function useAudioCapture({
   const [isSupported, setIsSupported] = useState(true);
   const [actualSampleRate, setActualSampleRate] = useState<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const metadataSentRef = useRef(false); // Prevent spam
   
   // Use refs to always have access to current callback and error handler
   const onAudioDataRef = useRef(onAudioData);
@@ -50,64 +49,78 @@ export function useAudioCapture({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: { ideal: sampleRate } // Hint, but browser may ignore
+          sampleRate: { ideal: sampleRate }
         }
       });
 
       streamRef.current = stream;
 
-      // CRITICAL: Create AudioContext WITHOUT specifying sampleRate
-      // This lets the browser use native hardware sample rate
+      // Detect ACTUAL sample rate from audio track
+      const audioTrack = stream.getAudioTracks()[0];
+      const settings = audioTrack.getSettings();
+      const hwSampleRate = settings.sampleRate || 48000;
+      setActualSampleRate(hwSampleRate);
+      console.log(`[Audio] Hardware sample rate: ${hwSampleRate}Hz (requested: ${sampleRate}Hz)`);
+
+      // Create AudioContext with actual hardware sample rate
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = audioContext;
       
-      // Capture ACTUAL hardware sample rate (48kHz on most phones)
-      const hwSampleRate = audioContext.sampleRate;
-      setActualSampleRate(hwSampleRate);
-      console.log(`[Audio] Hardware sample rate: ${hwSampleRate}Hz (requested: ${sampleRate}Hz)`);
+      console.log(`[Audio] AudioContext created with sample rate: ${audioContext.sampleRate}Hz`);
 
       // Create media stream source
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      // Load AudioWorklet for reliable mobile processing
-      await audioContext.audioWorklet.addModule('/audio-processor.worklet.js');
-      
-      // Create worklet node
-      const workletNode = new AudioWorkletNode(audioContext, 'audio-processor-worklet');
-      workletNodeRef.current = workletNode;
+      // Use ScriptProcessorNode for PCM extraction (works on all browsers including mobile)
+      // 4096 buffer size = ~85ms latency at 48kHz (acceptable for streaming)
+      const scriptProcessor = audioContext.createScriptProcessor(4096, channels, channels);
+      scriptProcessorRef.current = scriptProcessor;
 
-      // Handle audio data from worklet
-      workletNode.port.onmessage = (event) => {
-        const audioBytes = new Uint8Array(event.data);
-        console.log(`[Audio] Chunk captured: ${audioBytes.length} bytes @ ${hwSampleRate}Hz`);
-        onAudioDataRef.current?.(audioBytes);
+      scriptProcessor.onaudioprocess = (event) => {
+        const inputBuffer = event.inputBuffer;
+        const channelData = inputBuffer.getChannelData(0); // Mono
+
+        // Convert Float32 (-1.0 to 1.0) to Int16 LINEAR16 PCM (-32768 to 32767)
+        const int16Buffer = new Int16Array(channelData.length);
+        for (let i = 0; i < channelData.length; i++) {
+          const s = Math.max(-1, Math.min(1, channelData[i])); // Clamp to range
+          int16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+
+        // Convert to Uint8Array (byte representation)
+        const uint8Array = new Uint8Array(int16Buffer.buffer);
+        
+        // Send to callback
+        onAudioDataRef.current?.(uint8Array);
       };
 
-      // Connect the audio graph
-      source.connect(workletNode);
-      workletNode.connect(audioContext.destination);
+      // Connect audio graph: source → scriptProcessor → destination
+      source.connect(scriptProcessor);
+      scriptProcessor.connect(audioContext.destination);
 
       setIsRecording(true);
-      metadataSentRef.current = false; // Reset for new session
+      console.log('[Audio] Recording started with ScriptProcessorNode');
 
     } catch (error) {
+      console.error('[Audio] Failed to start recording:', error);
       setIsSupported(false);
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to start recording'));
     }
   }, [sampleRate, channels]);
 
   const stopRecording = useCallback(() => {
+    console.log('[Audio] Stopping recording...');
     setIsRecording(false);
-    metadataSentRef.current = false;
 
-    // Disconnect audio graph
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current.port.close();
-      workletNodeRef.current = null;
+    // Disconnect script processor
+    if (scriptProcessorRef.current) {
+      scriptProcessorRef.current.disconnect();
+      scriptProcessorRef.current.onaudioprocess = null;
+      scriptProcessorRef.current = null;
     }
 
+    // Disconnect source
     if (sourceRef.current) {
       sourceRef.current.disconnect();
       sourceRef.current = null;
@@ -121,7 +134,10 @@ export function useAudioCapture({
 
     // Stop media stream
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('[Audio] Stopped track:', track.kind);
+      });
       streamRef.current = null;
     }
 
@@ -129,11 +145,14 @@ export function useAudioCapture({
   }, []);
 
   const pauseRecording = useCallback(() => {
+    // ScriptProcessorNode doesn't have pause - we'd need to disconnect/reconnect
     setIsRecording(false);
+    console.log('[Audio] Paused (note: ScriptProcessor continues processing)');
   }, []);
 
   const resumeRecording = useCallback(() => {
     setIsRecording(true);
+    console.log('[Audio] Resumed');
   }, []);
 
   return {
@@ -143,7 +162,7 @@ export function useAudioCapture({
     resumeRecording,
     isRecording,
     isSupported,
-    actualSampleRate // Expose actual sample rate
+    actualSampleRate
   };
 }
 

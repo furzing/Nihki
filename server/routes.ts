@@ -1,6 +1,11 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocketServer as WSServer, WebSocket } from "ws";
+import { streamingTranscriptionManager as streamingManager } from "./services/streaming-transcription";
+import type { Storage } from "./db-storage";
+import { TextToSpeechClient } from "@google-cloud/text-to-speech";
+import prism from "prism-media";
+import { Readable, Transform } from "stream";
 import { DbStorage } from "./db-storage";
 import { insertSessionSchema, insertParticipantSchema, insertSpeakerSchema, insertUserSchema, loginSchema, type User } from "@shared/schema";
 
@@ -646,7 +651,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const audioCache = new Map<string, string>();
 
   // WebSocket Server for Real-time Communication
-  const wss = new WebSocketServer({
+  const wss = new WSServer({
     server: httpServer,
     path: '/ws'
   });
