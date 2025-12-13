@@ -2,7 +2,7 @@ services:
   - type: web
     name: nihki-live
     runtime: node
-    buildCommand: rm -rf node_modules package-lock.json && npm install && npm run build
+    buildCommand: rm -rf node_modules package-lock.json && npm install && npm install --save-optional @rollup/rollup-linux-x64-gnu && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
