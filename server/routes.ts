@@ -950,9 +950,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   return;
                 }
 
-                if (!participant.isSpeaking) {
+                // Allow host even if isSpeaking=false; others must have permission
+                if (!participant.isSpeaking && participant.role !== 'host') {
                   console.error('[WebSocket] ❌ Participant not speaking:', participantId);
                   return;
+                }
+
+                // Auto-mark host as speaking so subsequent checks pass
+                if (participant.role === 'host' && !participant.isSpeaking) {
+                  await storage.updateParticipant(participantId, { isSpeaking: true });
                 }
 
                 // Set context
@@ -1026,10 +1032,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   return;
                 }
 
-                // Validate participant has speaking permission
-                if (!participant.isSpeaking) {
+                // Validate participant has speaking permission (host bypass)
+                if (!participant.isSpeaking && participant.role !== 'host') {
                   console.error('[WebSocket] ❌ Participant does not have speaking permission:', participantId);
                   return;
+                }
+
+                // Auto-mark host as speaking
+                if (participant.role === 'host' && !participant.isSpeaking) {
+                  await storage.updateParticipant(participantId, { isSpeaking: true });
                 }
 
                 // Set current participant context for upcoming binary audio frames

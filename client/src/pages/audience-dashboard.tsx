@@ -30,6 +30,7 @@ export default function AudienceDashboard() {
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const audioQueueRef = useRef<AudioQueue>(new AudioQueue(0.8));
+  const metadataSentRef = useRef(false);
 
   const { data: session, isLoading } = useQuery<Session>({
     queryKey: ['/api/sessions', sessionId],
@@ -50,20 +51,32 @@ export default function AudienceDashboard() {
 
   // Wrap audio callbacks in useCallback with proper dependencies
   const handleAudioData = useCallback((audioData: Uint8Array) => {
-    if (isRecording && participantId && sendBinaryMessage) {
-      // First send a control message with metadata
+    if (!isRecording || !participantId || !sendBinaryMessage) return;
+
+    // Ensure metadata is sent before streaming chunks
+    if (!metadataSentRef.current && actualSampleRate && participant) {
+      console.log(`[Audio] Sending metadata before first chunk: ${actualSampleRate}Hz, lang: ${participant.language}`);
       sendMessage({
-        type: 'audio-chunk-metadata',
-        data: {
-          participantId: participantId,
-          speakerName: participant?.name,
-          isParticipant: true
-        }
+        type: 'audio_metadata',
+        participantId,
+        targetLanguage: participant.language || 'en-US',
+        sampleRate: actualSampleRate
       });
-      // Then send binary audio
-      sendBinaryMessage(audioData);
+      metadataSentRef.current = true;
     }
-  }, [sendMessage, sendBinaryMessage, participantId, isRecording, participant?.name]);
+
+    // First send a control message with metadata for chunk routing
+    sendMessage({
+      type: 'audio-chunk-metadata',
+      data: {
+        participantId,
+        speakerName: participant?.name,
+        isParticipant: true
+      }
+    });
+    // Then send binary audio
+    sendBinaryMessage(audioData);
+  }, [sendMessage, sendBinaryMessage, participantId, isRecording, participant?.name, participant?.language, actualSampleRate, participant]);
 
   const handleAudioError = useCallback((error: Error) => {
     console.error('Audio capture error:', error);
@@ -77,9 +90,9 @@ export default function AudienceDashboard() {
     onError: handleAudioError
   });
 
-  // Send metadata ONCE when recording starts
+  // Send metadata ONCE when recording starts and sample rate is known
   useEffect(() => {
-    if (isRecording && actualSampleRate && participantId && participant) {
+    if (isRecording && actualSampleRate && participantId && participant && !metadataSentRef.current) {
       console.log(`[Audio] Sending metadata ONCE: ${actualSampleRate}Hz, lang: ${participant.language}`);
       sendMessage({
         type: 'audio_metadata',
@@ -87,8 +100,12 @@ export default function AudienceDashboard() {
         targetLanguage: participant.language || 'en-US',
         sampleRate: actualSampleRate
       });
+      metadataSentRef.current = true;
     }
-  }, [isRecording]); // ONLY when recording starts, not on every chunk
+    if (!isRecording) {
+      metadataSentRef.current = false;
+    }
+  }, [isRecording, actualSampleRate, participantId, participant?.language, sendMessage]);
 
   useEffect(() => {
     if (participant) {
@@ -107,6 +124,7 @@ export default function AudienceDashboard() {
     if (isRecording) {
       stopRecording();
       setIsRecording(false);
+      metadataSentRef.current = false;
       sendMessage({
         type: 'speaker-status',
         data: {

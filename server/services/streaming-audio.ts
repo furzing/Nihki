@@ -280,7 +280,7 @@ export class SpeakerStreamRecognizer extends EventEmitter {
 
     this.emit('sentence', {
       text: completeSentence,
-      language: 'en-US',
+      language: this.languageCode,
       confidence: 0.8,
       participantId: this.participantId,
       speakerName: this.speakerName,
@@ -385,7 +385,7 @@ export class SpeakerStreamRecognizer extends EventEmitter {
       console.log(`[Stream] Flushing accumulated: "${this.interimTranscript}"`);
       this.emit('sentence', {
         text: this.interimTranscript.trim(),
-        language: 'en-US',
+        language: this.languageCode,
         confidence: 0.8,
         participantId: this.participantId,
         speakerName: this.speakerName,

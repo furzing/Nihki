@@ -17,7 +17,9 @@ export function useAudioCapture({
   const [isSupported, setIsSupported] = useState(true);
   const [actualSampleRate, setActualSampleRate] = useState<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   
@@ -36,13 +38,13 @@ export function useAudioCapture({
 
   const startRecording = useCallback(async () => {
     try {
-      // Check if getUserMedia is supported
+      if (isRecording) return;
+
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setIsSupported(false);
         throw new Error('Audio recording not supported in this browser');
       }
 
-      // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: channels,
@@ -55,94 +57,115 @@ export function useAudioCapture({
 
       streamRef.current = stream;
 
-      // Detect ACTUAL sample rate from audio track
-      const audioTrack = stream.getAudioTracks()[0];
-      const settings = audioTrack.getSettings();
-      const hwSampleRate = settings.sampleRate || 48000;
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      await audioContext.resume();
+      audioContextRef.current = audioContext;
+
+      // Use the hardware sample rate (mobile usually 48000)
+      const hwSampleRate = audioContext.sampleRate;
       setActualSampleRate(hwSampleRate);
       console.log(`[Audio] Hardware sample rate: ${hwSampleRate}Hz (requested: ${sampleRate}Hz)`);
 
-      // Create AudioContext with actual hardware sample rate
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioContextRef.current = audioContext;
-      
-      console.log(`[Audio] AudioContext created with sample rate: ${audioContext.sampleRate}Hz`);
-
-      // Create media stream source
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      // Use ScriptProcessorNode for PCM extraction (works on all browsers including mobile)
-      // 4096 buffer size = ~85ms latency at 48kHz (acceptable for streaming)
-      const scriptProcessor = audioContext.createScriptProcessor(4096, channels, channels);
-      scriptProcessorRef.current = scriptProcessor;
+      // Mute downstream to avoid feedback while keeping graph alive
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 0;
+      gainNodeRef.current = gainNode;
 
-      scriptProcessor.onaudioprocess = (event) => {
-        const inputBuffer = event.inputBuffer;
-        const channelData = inputBuffer.getChannelData(0); // Mono
+      let workletStarted = false;
 
-        // Convert Float32 (-1.0 to 1.0) to Int16 LINEAR16 PCM (-32768 to 32767)
-        const int16Buffer = new Int16Array(channelData.length);
-        for (let i = 0; i < channelData.length; i++) {
-          const s = Math.max(-1, Math.min(1, channelData[i])); // Clamp to range
-          int16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      // Prefer AudioWorklet (mobile-friendly, off-main-thread)
+      if (audioContext.audioWorklet && typeof audioContext.audioWorklet.addModule === 'function') {
+        try {
+          await audioContext.audioWorklet.addModule('/audio-processor.worklet.js');
+          const workletNode = new AudioWorkletNode(audioContext, 'audio-processor-worklet');
+          workletNodeRef.current = workletNode;
+
+          workletNode.port.onmessage = (event) => {
+            const audioBytes = new Uint8Array(event.data);
+            onAudioDataRef.current?.(audioBytes);
+          };
+
+          source.connect(workletNode);
+          workletNode.connect(gainNode).connect(audioContext.destination);
+          workletStarted = true;
+          console.log('[Audio] Recording with AudioWorklet');
+        } catch (err) {
+          console.warn('[Audio] AudioWorklet unavailable, falling back to ScriptProcessor', err);
         }
+      }
 
-        // Convert to Uint8Array (byte representation)
-        const uint8Array = new Uint8Array(int16Buffer.buffer);
-        
-        // Send to callback
-        onAudioDataRef.current?.(uint8Array);
-      };
+      // Fallback: ScriptProcessorNode
+      if (!workletStarted) {
+        const scriptProcessor = audioContext.createScriptProcessor(4096, channels, channels);
+        scriptProcessorRef.current = scriptProcessor;
 
-      // Connect audio graph: source → scriptProcessor → destination
-      source.connect(scriptProcessor);
-      scriptProcessor.connect(audioContext.destination);
+        scriptProcessor.onaudioprocess = (event) => {
+          const inputBuffer = event.inputBuffer;
+          const channelData = inputBuffer.getChannelData(0);
+          const int16Buffer = new Int16Array(channelData.length);
+          for (let i = 0; i < channelData.length; i++) {
+            const s = Math.max(-1, Math.min(1, channelData[i]));
+            int16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          const uint8Array = new Uint8Array(int16Buffer.buffer);
+          onAudioDataRef.current?.(uint8Array);
+        };
+
+        source.connect(scriptProcessor);
+        scriptProcessor.connect(gainNode).connect(audioContext.destination);
+        console.log('[Audio] Recording with ScriptProcessor fallback');
+      }
 
       setIsRecording(true);
-      console.log('[Audio] Recording started with ScriptProcessorNode');
-
     } catch (error) {
       console.error('[Audio] Failed to start recording:', error);
       setIsSupported(false);
       onErrorRef.current?.(error instanceof Error ? error : new Error('Failed to start recording'));
     }
-  }, [sampleRate, channels]);
+  }, [sampleRate, channels, isRecording]);
 
   const stopRecording = useCallback(() => {
-    console.log('[Audio] Stopping recording...');
+    if (!isRecording) return;
+
     setIsRecording(false);
 
-    // Disconnect script processor
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current.port.close();
+      workletNodeRef.current = null;
+    }
+
     if (scriptProcessorRef.current) {
       scriptProcessorRef.current.disconnect();
       scriptProcessorRef.current.onaudioprocess = null;
       scriptProcessorRef.current = null;
     }
 
-    // Disconnect source
     if (sourceRef.current) {
       sourceRef.current.disconnect();
       sourceRef.current = null;
     }
 
-    // Close audio context
+    if (gainNodeRef.current) {
+      gainNodeRef.current.disconnect();
+      gainNodeRef.current = null;
+    }
+
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
 
-    // Stop media stream
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('[Audio] Stopped track:', track.kind);
-      });
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
 
     setActualSampleRate(null);
-  }, []);
+  }, [isRecording]);
 
   const pauseRecording = useCallback(() => {
     // ScriptProcessorNode doesn't have pause - we'd need to disconnect/reconnect

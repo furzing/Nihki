@@ -39,6 +39,7 @@ export default function AdminDashboard() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const audioQueueRef = useRef<AudioQueue>(new AudioQueue(0.8));
+  const metadataSentRef = useRef(false);
 
   // Find the host participant (current user)
   const { data: session, isLoading } = useQuery<Session>({
@@ -64,39 +65,73 @@ export default function AdminDashboard() {
 
   // Wrap audio callbacks in useCallback with proper dependencies
   const handleAudioData = useCallback((audioData: Uint8Array) => {
-    if (isRecording && hostParticipant && sendBinaryMessage) {
-      // First send a control message with metadata
+    if (!isRecording || !hostParticipant || !sendBinaryMessage) return;
+
+    if (!metadataSentRef.current && actualSampleRate) {
+      console.log(`[Audio] Host sending metadata before first chunk: ${actualSampleRate}Hz, lang: ${hostParticipant.language}`);
       sendMessage({
-        type: 'audio-chunk-metadata',
-        data: {
-          participantId: hostParticipant.id,
-          speakerName: hostParticipant.name,
-          isParticipant: true
-        }
+        type: 'audio_metadata',
+        participantId: hostParticipant.id,
+        targetLanguage: hostParticipant.language || 'en-US',
+        sampleRate: actualSampleRate
       });
-      // Then send binary audio
-      sendBinaryMessage(audioData);
+      metadataSentRef.current = true;
     }
-  }, [sendMessage, sendBinaryMessage, hostParticipant, isRecording]);
+
+    // First send a control message with metadata
+    sendMessage({
+      type: 'audio-chunk-metadata',
+      data: {
+        participantId: hostParticipant.id,
+        speakerName: hostParticipant.name,
+        isParticipant: true
+      }
+    });
+    // Then send binary audio
+    sendBinaryMessage(audioData);
+  }, [sendMessage, sendBinaryMessage, hostParticipant, isRecording, actualSampleRate]);
 
   const handleAudioError = useCallback((error: Error) => {
     console.error('Audio capture error:', error);
     setIsRecording(false);
   }, []);
 
-  const { startRecording, stopRecording, isSupported } = useAudioCapture({
+  const { startRecording, stopRecording, isSupported, actualSampleRate } = useAudioCapture({
     sampleRate: 16000,
     channels: 1,
     onAudioData: handleAudioData,
     onError: handleAudioError
   });
 
-  const handleHostMicToggle = () => {
+  // Send metadata ONCE when host recording starts and sample rate known
+  useEffect(() => {
+    if (isRecording && actualSampleRate && hostParticipant && !metadataSentRef.current) {
+      console.log(`[Audio] Host sending metadata ONCE: ${actualSampleRate}Hz, lang: ${hostParticipant.language}`);
+      sendMessage({
+        type: 'audio_metadata',
+        participantId: hostParticipant.id,
+        targetLanguage: hostParticipant.language || 'en-US',
+        sampleRate: actualSampleRate
+      });
+      metadataSentRef.current = true;
+    }
+    if (!isRecording) {
+      metadataSentRef.current = false;
+    }
+  }, [isRecording, actualSampleRate, hostParticipant, sendMessage]);
+
+  const handleHostMicToggle = async () => {
     if (!hostParticipant) return;
     
     if (isRecording) {
       stopRecording();
       setIsRecording(false);
+      metadataSentRef.current = false;
+      try {
+        await apiRequest('PATCH', `/api/participants/${hostParticipant.id}/speaking`, { isSpeaking: false });
+      } catch (err) {
+        console.error('Failed to update host speaking flag (off):', err);
+      }
       sendMessage({
         type: 'speaker-status',
         data: {
@@ -108,8 +143,13 @@ export default function AdminDashboard() {
       });
     } else {
       if (isSupported) {
-        startRecording();
+        await startRecording();
         setIsRecording(true);
+        try {
+          await apiRequest('PATCH', `/api/participants/${hostParticipant.id}/speaking`, { isSpeaking: true });
+        } catch (err) {
+          console.error('Failed to update host speaking flag (on):', err);
+        }
         sendMessage({
           type: 'speaker-status',
           data: {
