@@ -17,13 +17,9 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: PGDATABASE
+      - key: SUPABASE_URL
         sync: false
-      - key: PGHOST
+      - key: SUPABASE_ANON_KEY
         sync: false
-      - key: PGPORT
-        sync: false
-      - key: PGUSER
-        sync: false
-      - key: PGPASSWORD
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
