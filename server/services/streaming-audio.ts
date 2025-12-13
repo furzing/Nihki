@@ -58,15 +58,22 @@ export class SpeakerStreamRecognizer extends EventEmitter {
     private sessionId: string
   ) {
     super();
+    this.sampleRate = 16000; // Default, can be updated
+    this.languageCode = 'en-US'; // Default, can be updated
   }
 
+  // Allow updating stream configuration
+  public sampleRate: number;
+  public languageCode: string;
+
   private createNewStream() {
+    console.log(`[Stream] Creating stream with ${this.sampleRate}Hz, lang: ${this.languageCode}`);
     return speechClient
       .streamingRecognize({
         config: {
           encoding: 'LINEAR16' as const,
-          sampleRateHertz: 16000,
-          languageCode: 'en-US',
+          sampleRateHertz: this.sampleRate,
+          languageCode: this.languageCode,
           enableAutomaticPunctuation: true,
           model: 'default',
           useEnhanced: true,

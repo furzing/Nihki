@@ -70,12 +70,25 @@ export default function AudienceDashboard() {
     setIsRecording(false);
   }, []);
 
-  const { startRecording, stopRecording, isSupported } = useAudioCapture({
+  const { startRecording, stopRecording, isSupported, actualSampleRate } = useAudioCapture({
     sampleRate: 16000,
     channels: 1,
     onAudioData: handleAudioData,
     onError: handleAudioError
   });
+
+  // Send metadata ONCE when recording starts
+  useEffect(() => {
+    if (isRecording && actualSampleRate && participantId && participant) {
+      console.log(`[Audio] Sending metadata ONCE: ${actualSampleRate}Hz, lang: ${participant.language}`);
+      sendMessage({
+        type: 'audio_metadata',
+        participantId: participantId,
+        targetLanguage: participant.language || 'en-US',
+        sampleRate: actualSampleRate
+      });
+    }
+  }, [isRecording]); // ONLY when recording starts, not on every chunk
 
   useEffect(() => {
     if (participant) {

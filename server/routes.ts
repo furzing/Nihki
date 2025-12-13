@@ -919,6 +919,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[WebSocket] Room ${currentSessionId} now has ${sessionRooms.get(currentSessionId)?.clients.size} clients`);
               break;
 
+            case 'audio_metadata':
+              try {
+                // Validate structure
+                if (!message.participantId || !message.sampleRate) {
+                  console.error('[WebSocket] ❌ audio_metadata missing required fields');
+                  return;
+                }
+
+                const participantId = message.participantId;
+                const targetLanguage = message.targetLanguage || 'en-US';
+                const sampleRate = message.sampleRate;
+
+                console.log(`[Audio] 📋 Metadata for ${participantId}: ${sampleRate}Hz, lang: ${targetLanguage}`);
+
+                // Validate participant
+                const participant = await storage.getParticipant(participantId);
+                if (!participant) {
+                  console.error('[WebSocket] ❌ Participant not found:', participantId);
+                  return;
+                }
+
+                if (!currentSessionId || participant.sessionId !== currentSessionId) {
+                  console.error('[WebSocket] ❌ Participant session mismatch');
+                  return;
+                }
+
+                if (!participant.isSpeaking) {
+                  console.error('[WebSocket] ❌ Participant not speaking:', participantId);
+                  return;
+                }
+
+                // Set context
+                currentParticipantId = participantId;
+                currentSpeakerName = participant.name;
+
+                console.log(`[WebSocket] 🎙️ Audio metadata set for participant: ${currentSpeakerName} (${participantId})`);
+
+                // Get or create stream with ACTUAL sample rate
+                const stream = streamingManager.getOrCreateStream(
+                  participantId,
+                  currentSpeakerName,
+                  currentSessionId
+                );
+
+                // Update stream sample rate (need to modify SpeakerStreamRecognizer)
+                (stream as any).sampleRate = sampleRate;
+                (stream as any).languageCode = targetLanguage;
+
+                // Set up event listeners on first use
+                if (stream.listenerCount('sentence') === 0) {
+                  console.log(`[WebSocket] 🔗 Setting up listeners for ${currentSpeakerName}`);
+                  stream.on('sentence', handleCompleteSentence);
+                  stream.on('interim', (interimData: any) => {
+                    broadcastToSession(currentSessionId!, {
+                      type: 'interim-transcript',
+                      data: interimData
+                    });
+                  });
+                  stream.on('error', (error: Error) => {
+                    console.error(`[Stream] ❌ Error for ${currentSpeakerName}:`, error);
+                  });
+                }
+
+                // Restart stream with new config
+                stream.stop();
+                stream.start();
+
+              } catch (error) {
+                console.error('[Audio] ❌ Error processing audio_metadata:', error);
+              }
+              break;
+
             case 'audio-chunk-metadata':
               // New control message for binary audio protocol
               if (!currentSessionId) {
